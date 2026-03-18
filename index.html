@@ -720,24 +720,66 @@ ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
     const c = document.createElement('canvas');
     c.width = c.height = size;
     const ctx = c.getContext('2d');
-    // Background
-    ctx.fillStyle = '#1a1a1a';
-    ctx.fillRect(0,0,size,size);
-    // Gold border ring
-    ctx.strokeStyle = '#c9a84c';
-    ctx.lineWidth = size * 0.04;
-    ctx.strokeRect(size*0.06, size*0.06, size*0.88, size*0.88);
-    // "MT" text
-    ctx.fillStyle = '#c9a84c';
-    ctx.font = `bold ${size*0.28}px Georgia,serif`;
+    const s = size;
+
+    // Background — deep navy
+    ctx.fillStyle = '#0e1a2b';
+    ctx.fillRect(0, 0, s, s);
+
+    // Subtle radial gradient overlay
+    const vg = ctx.createRadialGradient(s/2, s/2, s*0.1, s/2, s/2, s*0.72);
+    vg.addColorStop(0, 'rgba(42,80,120,0.35)');
+    vg.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, s, s);
+
+    // Rounded-corner border
+    const r = s * 0.12, m = s * 0.055;
+    ctx.beginPath();
+    ctx.moveTo(m+r, m);
+    ctx.lineTo(s-m-r, m); ctx.arcTo(s-m, m, s-m, m+r, r);
+    ctx.lineTo(s-m, s-m-r); ctx.arcTo(s-m, s-m, s-m-r, s-m, r);
+    ctx.lineTo(m+r, s-m); ctx.arcTo(m, s-m, m, s-m-r, r);
+    ctx.lineTo(m, m+r); ctx.arcTo(m, m, m+r, m, r);
+    ctx.closePath();
+    ctx.strokeStyle = '#4a8ab8';
+    ctx.lineWidth = s * 0.035;
+    ctx.stroke();
+
+    // Thin inner accent line
+    const m2 = m + s*0.055, r2 = r*0.6;
+    ctx.beginPath();
+    ctx.moveTo(m2+r2, m2);
+    ctx.lineTo(s-m2-r2, m2); ctx.arcTo(s-m2, m2, s-m2, m2+r2, r2);
+    ctx.lineTo(s-m2, s-m2-r2); ctx.arcTo(s-m2, s-m2, s-m2-r2, s-m2, r2);
+    ctx.lineTo(m2+r2, s-m2); ctx.arcTo(m2, s-m2, m2, s-m2-r2, r2);
+    ctx.lineTo(m2, m2+r2); ctx.arcTo(m2, m2, m2+r2, m2, r2);
+    ctx.closePath();
+    ctx.strokeStyle = 'rgba(74,138,184,0.3)';
+    ctx.lineWidth = s * 0.012;
+    ctx.stroke();
+
+    // "FMHF" — large, bright, bold
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('MT', size/2, size*0.35);
-    // Subtitle
-    ctx.fillStyle = '#8a8480';
-    ctx.font = `${size*0.11}px Georgia,serif`;
-    ctx.fillText('FORENSIC', size/2, size*0.58);
-    ctx.fillText('LAW', size/2, size*0.72);
+    ctx.fillStyle = '#e8f4ff';
+    ctx.font = `bold ${s*0.30}px 'Arial Narrow',Arial,sans-serif`;
+    ctx.fillText('FMHF', s/2, s*0.42);
+
+    // Divider line
+    const lw = s * 0.42;
+    ctx.beginPath();
+    ctx.moveTo(s/2 - lw/2, s*0.595);
+    ctx.lineTo(s/2 + lw/2, s*0.595);
+    ctx.strokeStyle = '#4a8ab8';
+    ctx.lineWidth = s * 0.018;
+    ctx.stroke();
+
+    // "Regs" — smaller, steel blue-tinted
+    ctx.fillStyle = '#7ab8d8';
+    ctx.font = `${s*0.175}px Georgia,serif`;
+    ctx.fillText('Regs', s/2, s*0.74);
+
     return c.toDataURL('image/png');
   }
 
