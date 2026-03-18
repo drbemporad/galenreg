@@ -28,7 +28,7 @@ body{background:#1a1a1a;overflow:hidden;}
   display:none;position:fixed;top:0;left:0;right:0;z-index:9999;
   background:#1a3a1a;border-bottom:1px solid #4a8a4a;
   padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:12px;
-  color:#a0d0a0;display:flex;align-items:center;gap:12px;justify-content:space-between;
+  color:#a0d0a0;align-items:center;gap:12px;justify-content:space-between;
 }
 #update-banner.visible{display:flex;}
 #update-banner button{
@@ -770,12 +770,13 @@ if ('serviceWorker' in navigator) {
       .then(reg => {
         console.log('[SW] Registered, scope:', reg.scope);
 
-        // Listen for SW updates
+        // Listen for SW updates — only banner if replacing an existing SW
         reg.addEventListener('updatefound', () => {
           const newWorker = reg.installing;
           newWorker.addEventListener('statechange', () => {
+            // navigator.serviceWorker.controller is null on first install,
+            // so this only fires when an update replaces an already-active SW
             if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-              // New content available — show update banner
               showUpdateBanner('A new version has been installed. Reload to update.');
             }
           });
