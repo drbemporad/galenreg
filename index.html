@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#111111">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MT Forensic Law">
+<meta name="description" content="Montana MCA Title 46 Chapter 14 and ARM 37.106 forensic psychiatric law reference">
+<title>MT Forensic Psychiatric Law</title>
+<link rel="manifest" href="manifest.json">
+
+<!-- Fonts loaded with display=swap so app is usable before they arrive -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;600;700&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,300;1,400&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+/* ── Global reset ── */
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body,#root{height:100%;width:100%;}
+body{background:#1a1a1a;overflow:hidden;}
+
+/* ── Update banner ── */
+#update-banner{
+  display:none;position:fixed;top:0;left:0;right:0;z-index:9999;
+  background:#1a3a1a;border-bottom:1px solid #4a8a4a;
+  padding:10px 16px;font-family:'JetBrains Mono',monospace;font-size:12px;
+  color:#a0d0a0;display:flex;align-items:center;gap:12px;justify-content:space-between;
+}
+#update-banner.visible{display:flex;}
+#update-banner button{
+  background:#2a6a2a;border:1px solid #4a8a4a;color:#c0e8c0;
+  font-family:'JetBrains Mono',monospace;font-size:11px;
+  padding:5px 12px;border-radius:3px;cursor:pointer;white-space:nowrap;
+}
+#update-banner button:hover{background:#3a7a3a;}
+#update-dismiss{background:none!important;border:none!important;color:#6a9a6a!important;padding:4px 8px!important;font-size:14px!important;}
+
+/* ── Offline indicator ── */
+#offline-badge{
+  display:none;position:fixed;bottom:12px;right:12px;z-index:9998;
+  background:#2a1a1a;border:1px solid #8a4a4a;border-radius:3px;
+  padding:5px 10px;font-family:'JetBrains Mono',monospace;font-size:10px;
+  color:#c08080;letter-spacing:.05em;
+}
+body.offline #offline-badge{display:block;}
+</style>
+</head>
+<body>
+
+<div id="update-banner" role="alert" aria-live="polite">
+  <span id="update-msg">A new version is available.</span>
+  <div style="display:flex;gap:8px;align-items:center;">
+    <button id="update-reload">Update now</button>
+    <button id="update-dismiss" title="Dismiss">✕</button>
+  </div>
+</div>
+
+<div id="offline-badge">OFFLINE</div>
+<div id="root"></div>
+
+<!-- React + Babel (pinned CDN versions, cached by SW after first load) -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
+
+<script type="text/babel">
+const { useState, useRef, useEffect } = React;
+
+// ════════════════════════════════════════════════════════════════════════════
+// APP VERSION — keep in sync with version.json and sw.js
+// ════════════════════════════════════════════════════════════════════════════
+const CURRENT_VERSION = '1.0.0';
+
+// ════════════════════════════════════════════════════════════════════════════
+// STYLES
+// ════════════════════════════════════════════════════════════════════════════
+const css = `
+  .app{background:#1a1a1a;color:#d4cfc8;font-family:'Source Serif 4',Georgia,serif;font-size:14px;line-height:1.7;height:100vh;display:flex;flex-direction:column;}
+  .hdr{background:#111;border-bottom:1px solid #9a7a34;padding:14px 24px;flex-shrink:0;}
+  .hdr-eye{font-family:'JetBrains Mono',monospace;font-size:10px;letter-spacing:.2em;color:#c9a84c;text-transform:uppercase;margin-bottom:2px;}
+  .hdr-h1{font-family:'Playfair Display',serif;font-size:19px;font-weight:600;color:#e8e0d0;line-height:1.2;}
+  .hdr-sub{font-size:11px;color:#8a8480;margin-top:2px;font-style:italic;}
+  .srch-bar{background:#111;border-bottom:1px solid #333;padding:9px 24px;flex-shrink:0;}
+  .srch-wrap{position:relative;max-width:540px;}
+  .srch-wrap input{width:100%;background:#222;border:1px solid #404040;color:#d4cfc8;font-family:'Source Serif 4',serif;font-size:13px;padding:7px 13px 7px 34px;border-radius:4px;outline:none;}
+  .srch-wrap input:focus{border-color:#9a7a34;}
+  .srch-wrap input::placeholder{color:#5a5654;}
+  .srch-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#5a5654;font-size:13px;pointer-events:none;}
+  .srch-count{font-family:'JetBrains Mono',monospace;font-size:10px;color:#8a8480;margin-top:4px;}
+  .tabs{background:#111;border-bottom:2px solid #333;padding:0 24px;display:flex;overflow-x:auto;flex-shrink:0;scrollbar-width:none;}
+  .tabs::-webkit-scrollbar{display:none;}
+  .tab-btn{background:none;border:none;cursor:pointer;padding:10px 16px;font-family:'Source Serif 4',serif;font-size:12.5px;color:#8a8480;border-bottom:2px solid transparent;margin-bottom:-2px;white-space:nowrap;transition:all .15s;flex-shrink:0;}
+  .tab-btn:hover{color:#d4cfc8;}
+  .tab-btn.active{color:#c9a84c;border-bottom-color:#c9a84c;}
+  .tab-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.1em;display:block;margin-bottom:1px;opacity:.7;}
+  .body{display:flex;flex:1;overflow:hidden;}
+  .sbar{width:250px;flex-shrink:0;background:#111;border-right:1px solid #333;padding:14px 0;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#404040 transparent;}
+  .sbar-hd{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.2em;color:#c9a84c;text-transform:uppercase;padding:8px 16px 6px;display:block;}
+  .toc-lnk{display:block;padding:4px 16px 4px 22px;font-size:11.5px;color:#8a8480;cursor:pointer;border-left:2px solid transparent;line-height:1.4;transition:all .1s;}
+  .toc-lnk:hover{color:#d4cfc8;background:#1e1e1e;}
+  .toc-lnk.active{color:#c9a84c;border-left-color:#c9a84c;background:rgba(201,168,76,.05);}
+  .toc-num{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#5a5654;display:block;}
+  .toc-lnk.repealed-toc{opacity:.45;}
+  .content{flex:1;padding:24px 32px;overflow-y:auto;}
+  .card{margin-bottom:32px;scroll-margin-top:14px;}
+  .card-hdr{padding-left:13px;margin-bottom:12px;}
+  .card-hdr.gold{border-left:3px solid #c9a84c;}
+  .card-hdr.blue{border-left:3px solid #6090b8;}
+  .card-hdr.dim{border-left:3px solid #404040;}
+  .card-cite{font-family:'JetBrains Mono',monospace;font-size:10.5px;letter-spacing:.1em;margin-bottom:2px;}
+  .card-cite.gold{color:#c9a84c;}
+  .card-cite.blue{color:#6090b8;}
+  .card-cite.dim{color:#5a5654;}
+  .card-title{font-family:'Playfair Display',serif;font-size:16px;font-weight:600;color:#e0d8c8;line-height:1.3;}
+  .card-title.dim{color:#6a6460;font-style:italic;font-size:14px;}
+  .card-meta{font-size:10.5px;color:#5a5654;font-style:italic;margin-top:2px;}
+  .card-body{background:#222;border:1px solid #333;border-radius:4px;padding:16px 20px;font-size:13.5px;line-height:1.75;}
+  .card-body.repealed-body{padding:10px 18px;color:#5a5654;font-style:italic;font-size:13px;}
+  .card.collapsed .card-body{display:none;}
+  .card.collapsed{margin-bottom:2px;opacity:.35;}
+  .card.collapsed .card-hdr{margin-bottom:0;}
+  .card-body .sub{margin-bottom:8px;}
+  .card-body .sl{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#9a7a34;margin-right:5px;}
+  .card-body .al{font-family:'JetBrains Mono',monospace;font-size:10.5px;color:#4a7090;margin-right:5px;}
+  .card-body .dt{font-weight:600;color:#e0d8c8;}
+  .card-body .note{background:#1a1e2a;border:1px solid #5080a0;border-radius:4px;padding:9px 13px;margin:12px 0 4px;font-size:12.5px;color:#a0b8cc;line-height:1.6;}
+  .card-body .nlbl{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.2em;color:#5080a0;text-transform:uppercase;display:block;margin-bottom:3px;}
+  .history{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#5a5654;border-top:1px solid #333;padding-top:8px;margin-top:10px;line-height:1.6;}
+  .divider{margin:24px 0 16px;display:flex;align-items:center;gap:10px;}
+  .divider-lbl{font-family:'Playfair Display',serif;font-size:12px;font-weight:600;color:#8a8480;white-space:nowrap;font-style:italic;}
+  .divider-line{flex:1;height:1px;background:#333;}
+  .notebox{background:#1a1e2a;border:1px solid #5080a0;border-radius:4px;padding:10px 14px;margin-bottom:20px;font-size:12.5px;color:#a0b8cc;line-height:1.6;}
+  .notebox strong{color:#6090b8;}
+  .notebox .nlbl{font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:.2em;color:#5080a0;text-transform:uppercase;display:block;margin-bottom:3px;}
+  .hl{background:#e8c84a;color:#111;border-radius:2px;padding:0 2px;font-weight:600;}
+  .ov-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:24px;}
+  .ov-card{background:#222;border:1px solid #333;border-radius:4px;padding:12px 16px;cursor:pointer;transition:border-color .15s;}
+  .ov-card:hover{border-color:#404040;}
+  .ov-card.mca{border-top:2px solid #c9a84c;}
+  .ov-card.arm{border-top:2px solid #5080a0;}
+  .ov-lbl{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.15em;margin-bottom:4px;}
+  .ov-card.mca .ov-lbl{color:#c9a84c;}
+  .ov-card.arm .ov-lbl{color:#6090b8;}
+  .ov-card h3{font-family:'Playfair Display',serif;font-size:13.5px;color:#e0d8c8;margin-bottom:4px;}
+  .ov-card p{font-size:11.5px;color:#8a8480;line-height:1.5;}
+  .ov-result{margin-bottom:24px;}
+  .ov-result-src{font-family:'JetBrains Mono',monospace;font-size:9.5px;letter-spacing:.15em;text-transform:uppercase;margin-bottom:4px;}
+  .ov-result-src.mca-s{color:#9a7a34;}
+  .ov-result-src.arm-s{color:#5080a0;}
+  .pathway{background:#222;border:1px solid #333;border-radius:4px;padding:16px 20px;font-size:12.5px;line-height:1.9;color:#8a8480;}
+  .pathway-step{display:flex;align-items:baseline;gap:8px;margin-bottom:2px;}
+  .step-lbl{font-family:'JetBrains Mono',monospace;font-size:9.5px;color:#c9a84c;white-space:nowrap;}
+  .step-indent{padding-left:18px;color:#5a5654;font-size:11.5px;margin-bottom:4px;}
+  .pathway-split{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:4px 0 6px;}
+  .ps-box{background:#2a2a2a;border:1px solid #333;border-radius:3px;padding:9px 11px;font-size:11.5px;}
+  .ps-lbl{font-family:'JetBrains Mono',monospace;font-size:9px;margin-bottom:2px;}
+  .ps-box.unfit .ps-lbl{color:#4a7090;}
+  .ps-box.fit .ps-lbl{color:#9a7a34;}
+  @media(max-width:800px){.sbar{display:none;}.ov-grid{grid-template-columns:1fr;}.pathway-split{grid-template-columns:1fr;}}
+  @media(max-width:480px){.content{padding:16px;}.hdr{padding:12px 16px;}.srch-bar{padding:8px 16px;}.tabs{padding:0 12px;}}
+  ::-webkit-scrollbar{width:5px;}
+  ::-webkit-scrollbar-track{background:transparent;}
+  ::-webkit-scrollbar-thumb{background:#404040;border-radius:3px;}
+`;
+
+// ════════════════════════════════════════════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════════════════════════════════════════════
+function hl(text, q) {
+  if (!q) return text;
+  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(new RegExp(`(${esc})`, "gi"), '<span class="hl">$1</span>');
+}
+function hlHTML(html, q) {
+  if (!q) return html;
+  const esc = q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return html.replace(new RegExp(`(${esc})(?![^<]*>)`, "gi"), '<span class="hl">$1</span>');
+}
+function hits(item, q) {
+  if (!q) return true;
+  return (item.cite + " " + item.title + " " + (item.content || "")).toLowerCase().includes(q.toLowerCase());
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// DATA — MCA 46-14 (all verified from leg.mt.gov 2025 MCA)
+// ════════════════════════════════════════════════════════════════════════════
+const MCA_SECTIONS = [
+  // ── PART 1 ──────────────────────────────────────────────────────────────
+  {id:"s101",cite:"MCA § 46-14-101",title:"Mental Disease or Disorder — Purpose — Definition",meta:"Part 1. Relevance of Mental Disease or Disorder",partDivider:"Part 1 — Relevance of Mental Disease or Disorder",
+  content:`<div class="sub"><span class="sl">(1)</span> The purpose of this section is to provide a legal standard of mental disease or disorder under which information gained from examination of the defendant, pursuant to Part 2 of this chapter, is applied. The court shall apply this standard: (a) in any determination regarding: (i) a defendant's fitness to proceed and stand trial; (ii) whether the defendant had, at the time the offense was committed, a particular state of mind that is an essential element of the offense; and (b) at sentencing when a defendant convicted on a verdict of guilty or a plea of guilty or nolo contendere claims the defendant was unable to appreciate the criminality of the defendant's behavior or to conform the defendant's behavior to the requirements of law.</div>
+<div class="sub"><span class="sl">(2)(a)</span> As used in this chapter, <em class="dt">"mental disease or disorder"</em> means an organic, mental, or emotional disorder that is manifested by a substantial disturbance in behavior, feeling, thinking, or judgment to such an extent that the person requires care, treatment, and rehabilitation.</div>
+<div class="sub"><span class="sl">(2)(b)</span> The term does not include but may co-occur with: (i) an abnormality manifested only by repeated criminal or other antisocial behavior; (ii) a developmental disability as defined in 53-20-102; (iii) drug or alcohol intoxication; or (iv) drug or alcohol addiction.</div>`,
+  history:"En. 95-501, Ch. 196, L. 1967; amd. Ch. 184, L. 1977; amd. Ch. 713, L. 1979; amd. Ch. 800, L. 1991; amd. Ch. 595, L. 2003; amd. Ch. 209, L. 2013; amd. Sec. 10, Ch. 161, L. 2015"},
+
+  {id:"s102",cite:"MCA § 46-14-102",title:"Evidence of Mental Disease or Disorder or Developmental Disability Admissible to Prove State of Mind",meta:"Part 1. Relevance of Mental Disease or Disorder",
+  content:`<div class="sub">Evidence that the defendant suffered from a mental disease or disorder or developmental disability is admissible to prove that the defendant did or did not have a state of mind that is an element of the offense.</div>`,
+  history:"En. 95-502, Ch. 196, L. 1967; amd. Ch. 800, L. 1991; amd. Ch. 452, L. 2003; amd. Sec. 11, Ch. 161, L. 2015"},
+
+  {id:"s103",cite:"MCA § 46-14-103",title:"Mental Disease or Disorder or Developmental Disability Excluding Fitness to Proceed",meta:"Part 1. Relevance of Mental Disease or Disorder",
+  content:`<div class="sub">A person who, as a result of mental disease or disorder or developmental disability, is unable to understand the proceedings against the person or to assist in the person's own defense may not be tried, convicted, or sentenced for the commission of an offense so long as the incapacity endures.</div>
+<div class="note"><span class="nlbl">Cross-Reference</span>The procedural mechanism for determining and acting on fitness is in Part 2 — see <strong>§ 46-14-202</strong> (examination) and <strong>§ 46-14-221</strong> (determination of fitness and procedure on finding of unfitness).</div>`,
+  history:"En. 95-504, Ch. 196, L. 1967; amd. Ch. 800, L. 1991; amd. Ch. 452, L. 2003; amd. Sec. 12, Ch. 161, L. 2015"},
+
+  // ── PART 2 ──────────────────────────────────────────────────────────────
+  {id:"s201",cite:"MCA § 46-14-201",title:"Renumbered 46-14-214",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",partDivider:"Part 2 — Procedure When Mental Disease or Disorder an Issue",repealed:true,repealedText:"Renumbered 46-14-214.",content:"",history:""},
+
+  {id:"s202",cite:"MCA § 46-14-202",title:"Examination of Defendant — Commitment Procedures for Examination of Fitness — Expenses",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",
+  content:`<div class="sub"><span class="sl">(1)</span> If the issue of a defendant's fitness to proceed is raised by the court, the prosecution, or the defendant, or if defense counsel files a written motion requesting examination, the court shall appoint at least one qualified psychiatrist, licensed clinical psychologist, or advanced practice registered nurse to examine and report upon the defendant's mental condition.</div>
+<div class="sub"><span class="sl">(2)(a)</span> The court may order the defendant committed to a hospital, another suitable facility, or the Montana State Hospital for examination for a period not exceeding 60 days or a longer period the court determines necessary. The court may direct that an examiner retained by the defendant be permitted to witness and participate in the examination.</div>
+<div class="sub"><span class="sl">(2)(b)</span> On commitment to MSH, the superintendent shall designate at least one qualified psychiatrist, licensed clinical psychologist, or APRN to report on the defendant's mental condition.</div>
+<div class="sub"><span class="sl">(3)</span> Except as provided in § 46-14-206(2), a court ordering an examination may not require the report to include an opinion as to the capacity of the defendant to have a particular state of mind that is an element of the offense, or an opinion as to capacity to appreciate criminality or conform conduct.</div>
+<div class="sub"><span class="sl">(4)</span> In the examination, any method accepted by the medical or psychological profession for examination of those alleged to be suffering from mental disease or disorder may be employed.</div>
+<div class="sub"><span class="sl">(5)</span> Costs are allocated by who raised the issue: court/prosecution → office of court administrator; defendant → defendant or office of state public defender; joint → split equally. Costs for examinations at DPHHS facilities may not be charged to the court administrator or public defender.</div>
+<div class="sub"><span class="sl">(6)</span> A court may not order the superintendent of MSH to designate an examiner unless no person within the county of venue is willing, able, or available to perform the examination.</div>
+<div class="note"><span class="nlbl">Cross-Reference</span>Results feed into the report required by <strong>§ 46-14-206</strong>, fitness determination under <strong>§ 46-14-221</strong>, and expert testimony standards under <strong>§ 46-14-213</strong>. MSH admission prioritization is governed by <strong>§ 46-14-223</strong> (2025).</div>`,
+  history:"En. 95-505, Ch. 196, L. 1967; amd. Ch. 713, L. 1979; amd. Ch. 800, L. 1991; amd. Ch. 303, L. 2001; amd. Ch. 140, L. 2007; amd. Sec. 13, Ch. 161, L. 2015; amd. Sec. 5, Ch. 607, L. 2025"},
+
+  {id:"s203",cite:"MCA § 46-14-203",title:"Renumbered 46-14-206",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",repealed:true,repealedText:"Renumbered 46-14-206.",content:"",history:""},
+
+  {id:"s204",cite:"MCA § 46-14-204",title:"Prosecution's Right to Examination",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",
+  content:`<div class="sub"><span class="sl">(1)</span> When the defense discloses the report of the examination to the prosecution or files a notice of the intention to rely on a defense of mental disease or disorder, the prosecution is entitled to have the defendant examined by a qualified psychiatrist, licensed clinical psychologist, or advanced practice registered nurse.</div>
+<div class="sub"><span class="sl">(2)</span> The report of the examination must be disclosed to the defense within 10 days of its receipt by the prosecution.</div>`,
+  history:"En. Sec. 153, Ch. 800, L. 1991; amd. Sec. 3, Ch. 303, L. 2001; amd. Sec. 14, Ch. 161, L. 2015"},
+
+  {id:"s205",cite:"MCA § 46-14-205",title:"Access to Defendant for Examination",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",
+  content:`<div class="sub">If either the defendant or the prosecution wishes the defendant to be examined by a qualified psychiatrist, licensed clinical psychologist, or advanced practice registered nurse selected by the party proposing the examination — in order to determine fitness to proceed or whether the defendant had a particular state of mind that is an essential element of the offense — the examiner must be permitted to have reasonable access to the defendant for the purpose of the examination.</div>`,
+  history:"En. 95-507, Ch. 196, L. 1967; amd. Ch. 800, L. 1991; Sec. 46-14-212, MCA 1989; redes. 46-14-205 by Code Commissioner, 1991; amd. Sec. 4, Ch. 303, L. 2001"},
+
+  {id:"s206",cite:"MCA § 46-14-206",title:"Report of Examination",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",
+  content:`<div class="sub"><span class="sl">(1)</span> A report of examination ordered under § 46-14-202 must include: (a) a description of the nature of the examination; (b) a diagnosis of the defendant's mental condition, including an opinion as to whether the defendant suffers from a mental disorder (§ 53-21-102) and may require commitment, or is seriously developmentally disabled (§ 53-20-102); and (c) if the defendant suffers from a mental disease or disorder or developmental disability, an opinion as to the defendant's capacity to understand the proceedings and to assist in the defendant's own defense.</div>
+<div class="sub"><span class="sl">(2)</span> A court may direct that the report also include: (a) an opinion as to the capacity of the defendant to have a particular state of mind that is an element of the offense; and (b) an opinion as to capacity to appreciate criminality or conform conduct, when: (i) parties having received a fitness opinion stipulate to unfitness; (ii) necessary for psychiatric testimony at trial; (iii) the defendant raises a defense under § 46-14-311(1); or (iv) necessary for sentencing consideration.</div>
+<div class="sub"><span class="sl">(3)</span> If the examination cannot be conducted due to the defendant's unwillingness to participate, the report must state that fact and, if possible, include an opinion as to whether the unwillingness was the result of the mental disease or disorder or developmental disability.</div>`,
+  history:"En. 95-505, Ch. 196, L. 1967; amd. Ch. 800, L. 1991; Sec. 46-14-203, MCA 1989; redes. 46-14-206 by Code Commissioner, 1991; amd. Ch. 452, L. 2003; amd. Sec. 15, Ch. 161, L. 2015; amd. Sec. 6, Ch. 607, L. 2025"},
+
+  {id:"s207",cite:"MCA §§ 46-14-207 through 46-14-210",title:"Reserved",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",repealed:true,repealedText:"Reserved.",content:"",history:""},
+  {id:"s211",cite:"MCA § 46-14-211",title:"Repealed",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",repealed:true,repealedText:"Repealed.",content:"",history:""},
+  {id:"s212",cite:"MCA § 46-14-212",title:"Renumbered 46-14-205",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",repealed:true,repealedText:"Renumbered 46-14-205.",content:"",history:""},
+
+  {id:"s213",cite:"MCA § 46-14-213",title:"Psychiatric or Psychological Testimony Upon Trial",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",
+  content:`<div class="sub"><span class="sl">(1)</span> Upon trial, any psychiatrist, licensed clinical psychologist, or APRN who reported under § 46-14-202 or § 46-14-206 may be called as a witness by the prosecutor or by the defense. Both parties may summon any other qualified psychiatrist, licensed clinical psychologist, or APRN to testify, but only a person who has examined the defendant is competent to testify to an expert opinion with respect to the mental condition of the defendant.</div>
+<div class="sub"><span class="sl">(2)</span> When a psychiatrist, licensed clinical psychologist, or APRN who has examined the defendant testifies, the expert may make a statement as to the nature of the examination and the diagnosis, and any explanation reasonably serving to clarify the examination and diagnosis. The expert may be cross-examined as to competency, credibility, or the validity of the examination or diagnosis. <strong>A psychiatrist, licensed clinical psychologist, or APRN may not offer an opinion to the jury on the ultimate issue of whether the defendant did or did not have a particular state of mind that is an element of the offense charged.</strong></div>
+<div class="note"><span class="nlbl">Forensic Note</span>The prohibition on ultimate-issue opinions in subsection (2) is a significant limitation distinguishing Montana practice. Experts may describe the clinical picture and functional impairments but cannot opine directly on the legal mental state element.</div>`,
+  history:"En. 95-507, Ch. 196, L. 1967; amd. Ch. 713, L. 1979; amd. Ch. 800, L. 1991; amd. Sec. 5, Ch. 303, L. 2001"},
+
+  {id:"s214",cite:"MCA § 46-14-214",title:"Form of Verdict and Judgment — Determination of Maximum Period of Confinement — Victim Findings",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",
+  content:`<div class="sub"><span class="sl">(1)</span> When the defendant is found not guilty for the reason that due to a mental disease or disorder the defendant did not have a particular state of mind that is an essential element of the offense charged, the verdict and the judgment must state that reason.</div>
+<div class="sub"><span class="sl">(2)</span> The court shall determine on the record the charged offense or offenses or any lesser included offense for which the person otherwise may have been convicted, and the maximum sentence the defendant may have received. If there is more than one offense charged, the maximum sentence is limited to the longest single sentence from all charged offenses.</div>
+<div class="sub"><span class="sl">(3)</span> The court shall make specific findings regarding whether there is a victim of the crime for which the defendant is found not guilty and, if so, whether the victim wishes to be notified of any conditional release, discharge, or escape of the defendant.</div>
+<div class="note"><span class="nlbl">Cross-Reference</span>The maximum sentence determined under subsection (2) caps the permissible period of commitment under <strong>§ 46-14-301(4)</strong>. The victim notification finding under subsection (3) triggers DPHHS notification obligations at conditional release.</div>`,
+  history:"En. 95-503, Ch. 196, L. 1967; amd. Ch. 713, L. 1979; amd. Ch. 800, L. 1991; Sec. 46-14-201, MCA 1989; redes. 46-14-214 by Code Commissioner, 1991; amd. Ch. 164, L. 2003; amd. Sec. 16, Ch. 161, L. 2015"},
+
+  {id:"s215",cite:"MCA §§ 46-14-215 and 46-14-216",title:"Reserved",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",repealed:true,repealedText:"Reserved.",content:"",history:""},
+
+  {id:"s217",cite:"MCA § 46-14-217",title:"Admissibility of Statements Made During Examination or Treatment",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",
+  content:`<div class="sub">A statement made for the purposes of psychiatric or psychological examination or treatment provided for in this chapter is not admissible in evidence against the person at trial on any issue other than that of the person's mental condition. It is admissible on the issue of the person's mental condition — whether or not it would otherwise be considered a privileged communication — only when and after the defendant presents evidence that due to a mental disease or disorder the defendant did not have a particular state of mind that is an element of the offense charged.</div>
+<div class="note"><span class="nlbl">Forensic Note</span>This section provides critical protection for defendants undergoing court-ordered evaluation. Statements made during a § 46-14-202 examination are inadmissible on guilt unless the defendant first opens the door by presenting a mental state defense.</div>`,
+  history:"En. 95-509, Ch. 196, L. 1967; amd. Ch. 713, L. 1979; amd. Ch. 800, L. 1991; Sec. 46-14-401, MCA 1989; redes. 46-14-217 by Code Commissioner, 1991; amd. Sec. 17, Ch. 161, L. 2015"},
+
+  {id:"s218",cite:"MCA §§ 46-14-218 through 46-14-220",title:"Reserved",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",repealed:true,repealedText:"Reserved.",content:"",history:""},
+
+  {id:"s221",cite:"MCA § 46-14-221",title:"Determination of Fitness to Proceed — Procedure on Finding of Unfitness — Expenses — Involuntary Treatment — Rulemaking Authority",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",
+  content:`<div class="sub"><span class="sl">(1)(a)</span> When the issue of the defendant's fitness to proceed is raised, and an examination under § 46-14-202 has been completed, the defendant's fitness must be determined by the court.</div>
+<div class="sub"><span class="sl">(1)(b)-(c)</span> If neither party contests the report filed under § 46-14-206, the court may make the determination on the basis of the report. If contested, the court shall hold a hearing. Parties have the right to subpoena and cross-examine the examiners and to offer evidence.</div>
+<div class="sub"><span class="sl">(1)(d)</span> In determining fitness, the court shall restrict analysis to: (i) whether the defendant suffers from a mental disorder (§ 53-21-102) or is seriously developmentally disabled (§ 53-20-102); (ii) whether the defendant may require commitment; and (iii) whether the defendant has the capacity to understand the proceedings and to assist in the defendant's own defense.</div>
+<div class="sub"><span class="sl">(2)(a)</span> If the court determines that the defendant lacks fitness to proceed, proceedings must be suspended and the court shall commit the defendant to an appropriate mental health facility, residential facility, or to DPHHS custody for so long as unfitness endures or until disposition is made.</div>
+<div class="sub"><span class="sl">(2)(b)</span> The court may not commit the defendant to a private mental health facility or hospital without the express consent of that facility.</div>
+<div class="sub"><span class="sl">(3)(a)</span> The committing court shall, after receiving notice from DPHHS that a defendant has been restored to fitness, order the defendant returned to the committing county and set the matter for trial. For any incarcerated defendant, within 90 days of ordering commitment, the court shall review the defendant's status. If not admitted and still unfit, the court shall assess whether proceedings must be dismissed or whether alternatives — including involuntary medication — are appropriate.</div>
+<div class="sub"><span class="sl">(3)(b)</span> If an incarcerated defendant requires treatment, the county attorney may petition for an order requiring compliance, including involuntary administration of medication. The defendant has a right to a hearing. The court must make specific findings of an overriding justification and medical appropriateness before ordering involuntary medication.</div>
+<div class="sub"><span class="sl">(3)(c)</span> On admission, the facility shall evaluate the defendant and develop an individualized treatment plan. If the defendant refuses to comply, the facility may involuntarily administer medications if criteria are met: mental illness, unfitness determination, best medical interests, grave disability or likelihood of serious harm, and procedural safeguards through a treatment review committee and involuntary medication review board.</div>
+<div class="sub"><span class="sl">(3)(e)</span> After the initial 90-day review, the court shall review custodial status every 30 days or at an interval the court determines appropriate. If the defendant remains unfit, will not become fit in the foreseeable future, and alternatives to forensic commitment are not appropriate, the court shall dismiss the charge without prejudice and the prosecutor may petition for civil commitment under Title 53, chapter 21.</div>
+<div class="sub"><span class="sl">(3)(f)</span> If unfitness is due to developmental disability, the proceeding must be dismissed and the prosecutor shall petition for disposition under Title 53, chapter 20.</div>
+<div class="sub"><span class="sl">(4)</span> The fact that a defendant is unfit does not preclude legal objections to the prosecution susceptible to fair determination prior to trial and made without the personal participation of the defendant.</div>
+<div class="note"><span class="nlbl">Cross-Reference</span>Examination is ordered under <strong>§ 46-14-202</strong>; reports are governed by <strong>§ 46-14-206</strong>; restoration is governed by <strong>§ 46-14-222</strong>. FMHF treatment plan obligations are in <strong>ARM 37.106.1615</strong>. MSH admission priority is governed by <strong>§ 46-14-223</strong> (2025).</div>`,
+  history:"En. 95-506, Ch. 196, L. 1967; amd. Ch. 713, L. 1979; amd. Ch. 800, L. 1991; amd. Ch. 452, L. 2003; amd. Ch. 140, L. 2007; amd. Sec. 7, Ch. 607, L. 2025"},
+
+  {id:"s222",cite:"MCA § 46-14-222",title:"Proceedings if Fitness Regained",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",
+  content:`<div class="sub">When the court, on its own motion or upon application of the DPHHS director, the prosecution, or the defendant or the defendant's legal representative, determines — after a hearing if a hearing is requested — that the defendant has regained fitness to proceed, the proceeding must be resumed. If the court is of the view that so much time has elapsed since the commitment that it would be unjust to resume the criminal proceedings, the court may dismiss the charge and may order the defendant to be discharged or, subject to the law governing civil commitment of persons suffering from serious mental illness, order the defendant committed to an appropriate facility of DPHHS.</div>`,
+  history:"En. Ch. 713, L. 1979; amd. Ch. 800, L. 1991; amd. Ch. 449, L. 2005; amd. Ch. 140, L. 2007"},
+
+  {id:"s223",cite:"MCA § 46-14-223",title:"Prioritization of Admissions",meta:"Part 2. Procedure When Mental Disease or Disorder an Issue",
+  content:`<div class="sub">The Montana State Hospital shall prioritize admissions for evaluations and treatment as follows:</div>
+<div class="sub"><span class="sl">(1)</span> First priority must be given to a pretrial defendant who has been ordered committed to be evaluated and treated under § 46-14-221;</div>
+<div class="sub"><span class="sl">(2)</span> Second priority must be given to a pretrial defendant charged with a crime of violence, as defined in § 46-18-104, with an order of transport to the Montana State Hospital; and</div>
+<div class="sub"><span class="sl">(3)</span> As otherwise established by the department by administrative rule.</div>
+<div class="note"><span class="nlbl">New 2025</span>Enacted by Ch. 607, L. 2025. Addresses MSH admission capacity pressures and provides a statutory priority framework for forensic commitments. Priority tier 1 covers both fitness evaluation (§ 46-14-202) and restoration treatment (§ 46-14-221) orders.</div>`,
+  history:"En. Sec. 8, Ch. 607, L. 2025"},
+
+  // ── PART 3 ──────────────────────────────────────────────────────────────
+  {id:"s301",cite:"MCA § 46-14-301",title:"Commitment Upon Finding of Not Guilty by Reason of Lack of Mental State — Hearing to Determine Release or Discharge — Limitation on Confinement",meta:"Part 3. Disposition of Defendant",partDivider:"Part 3 — Disposition of Defendant",
+  content:`<div class="sub"><span class="sl">(1)</span> When a defendant is found not guilty for the reason that due to a mental disease or disorder the defendant could not have a particular state of mind that is an essential element of the offense charged, the court shall order a predisposition investigation under §§ 46-18-112 and 46-18-113, which must include an investigation of the present mental condition of the defendant. If trial was by jury, the court shall hold a hearing to determine appropriate disposition. The testimony and evidence presented at trial must be considered.</div>
+<div class="sub"><span class="sl">(2)</span> The court shall evaluate the nature of the offense charged. If the offense: (a) involved a substantial risk of serious bodily injury or death, actual bodily injury, or substantial property damage — the court may find that the defendant presents a danger to self or others and may commit the defendant to DPHHS custody for placement in an appropriate mental health facility for custody, care, and treatment (if seriously developmentally disabled, the prosecutor shall petition under Title 53, chapter 20); or (b) did not involve such risks — the court shall release the defendant.</div>
+<div class="sub"><span class="sl">(3)</span> A person committed must have a hearing within 180 days of confinement to determine present mental condition and whether the person must be discharged, released, or whether commitment may be extended. The hearing is a civil proceeding; the burden is upon the state to prove by clear and convincing evidence that the person may not be safely released because the person continues to present a substantial risk of: (a) serious bodily injury or death to self or others; (b) an imminent threat of physical injury; or (c) substantial property damage.</div>
+<div class="sub"><span class="sl">(4)</span> According to the court's determination, the person must be discharged, released on conditions the court determines necessary, or committed to DPHHS custody for placement in an appropriate mental health facility. <strong>The period of commitment may not exceed the maximum sentence determined under § 46-14-214(2).</strong> At the time the maximum sentence period expires, involuntary civil commitment proceedings may be instituted under Title 53, chapter 21.</div>
+<div class="sub"><span class="sl">(5)</span> A professional person shall review the status of the person each year. At the time of annual review, DPHHS, the person, or the person's representative may petition for discharge or release, triggering a hearing under subsection (3).</div>
+<div class="note"><span class="nlbl">Cross-Reference</span>The maximum confinement cap in subsection (4) is determined by the verdict form under <strong>§ 46-14-214(2)</strong>. Conditional release terms and revocation are governed by <strong>§ 46-14-304</strong>. Patient applications for discharge are governed by <strong>§ 46-14-303</strong>. FMHF court reporting is in <strong>ARM 37.106.1645</strong>.</div>`,
+  history:"En. 95-508, Ch. 196, L. 1967; amd. Ch. 713, L. 1979; amd. Ch. 800, L. 1991; amd. Ch. 397, L. 1993; amd. Ch. 546, L. 1995; amd. Ch. 164, L. 2003; amd. Sec. 18, Ch. 161, L. 2015"},
+
+  {id:"s302",cite:"MCA § 46-14-302",title:"Discharge or Release Upon Motion of Director",meta:"Part 3. Disposition of Defendant",
+  content:`<div class="sub"><span class="sl">(1)</span> If the DPHHS director believes a person committed under § 46-14-301 may be discharged or released on condition without danger to the person or others because the person no longer suffers from a mental disease or disorder causing substantial risk of serious bodily injury or death, an imminent threat of physical injury, or substantial property damage — the director shall make application to the committing district court and shall send a copy to the county attorney of the committing county.</div>
+<div class="sub"><span class="sl">(2)</span> Either the director or the person may also make application to the court as part of the person's annual treatment review.</div>
+<div class="sub"><span class="sl">(3)</span> The court shall appoint at least one qualified psychiatrist, licensed clinical psychologist, or APRN to examine the person and report within 60 days or a longer period the court determines necessary. The person's own professional examiner may also be secured; if the person cannot afford one, the court shall appoint an additional professional person, compensated by DPHHS.</div>
+<div class="sub"><span class="sl">(5)-(6)</span> If the court is satisfied that the committed person may be discharged or released because the person no longer presents the required substantial risk, the court shall order discharge. If not satisfied, the court shall promptly order a hearing. The hearing is a civil proceeding; the state bears the burden by clear and convincing evidence. According to the determination, the person must be discharged, released on conditions, or recommitted subject to discharge only via §§ 46-14-303 and 46-14-302.</div>`,
+  history:"En. 95-508, Ch. 196, L. 1967; amd. Ch. 800, L. 1991; amd. Ch. 397, L. 1993; amd. Ch. 546, L. 1995; amd. Ch. 303, L. 2001; amd. Sec. 19, Ch. 161, L. 2015"},
+
+  {id:"s303",cite:"MCA § 46-14-303",title:"Application for Discharge or Release by Committed Person",meta:"Part 3. Disposition of Defendant",
+  content:`<div class="sub">A committed person may make application for discharge or release to the district court by which the person was committed (unless that court transfers jurisdiction to the court in the district in which the person has been placed). The procedure on application is the same as prescribed in § 46-14-302 for applications by the DPHHS director. However, an application by a committed person need not be considered until the person has been confined for a period of not less than 6 months from the date of the order of commitment, and if the determination of the court is adverse to the application, the person may not file a further application until 1 year has elapsed from the date of any preceding hearing on an application for the person's release or discharge.</div>
+<div class="note"><span class="nlbl">Cross-Reference</span>This is the patient's independent avenue for seeking release, separate from the director's motion under <strong>§ 46-14-302</strong> and the annual review under <strong>§ 46-14-301(5)</strong>. The 6-month initial bar and 1-year re-application bar are absolute. FMHF must inform patients of this right; see <strong>ARM 37.106.1620</strong> (patient rights in secure setting).</div>`,
+  history:"En. 95-508, Ch. 196, L. 1967; amd. Ch. 800, L. 1991; amd. Ch. 397, L. 1993; amd. Ch. 546, L. 1995"},
+
+  {id:"s304",cite:"MCA § 46-14-304",title:"Conditional Release — Revocation",meta:"Part 3. Disposition of Defendant",
+  content:`<div class="sub"><span class="sl">(1)</span> A person who has been conditionally released remains under the supervision of the Department of Public Health and Human Services until the committing court discharges the person.</div>
+<div class="sub"><span class="sl">(2)</span> When the person is conditionally released, the DPHHS director shall provide written notice of the conditions of the person's release to any community facility or program treating the person, the county attorney of the county in which the person was committed, and the county attorney of the county in which the person is required to receive treatment.</div>
+<div class="sub"><span class="sl">(3)</span> On motion of a county attorney or DPHHS, the court may order revocation of a person's conditional release if the court determines after hearing that: (a) the conditions of release have not been fulfilled; and (b) based on the violations and the person's past mental health history, there is a substantial likelihood that the person continues to suffer from a mental disease or disorder that causes a substantial risk of: (i) serious bodily injury or death to the person or others; (ii) a threat of physical injury to the person or others; or (iii) substantial property damage.</div>
+<div class="sub"><span class="sl">(4)</span> If the court finds that conditional release should be revoked, the court shall immediately order the person recommitted to DPHHS custody, subject to discharge or release only in accordance with §§ 46-14-302 and 46-14-303.</div>
+<div class="note"><span class="nlbl">Cross-Reference</span>This is the operative conditional release and revocation provision for NGRI defendants committed under <strong>§ 46-14-301</strong>. Community supervision is provided by programs licensed under <strong>ARM 37.106.19</strong>; FMHF discharge planning is in <strong>ARM 37.106.1650</strong>.</div>`,
+  history:"En. 95-508, Ch. 196, L. 1967; amd. Ch. 800, L. 1991; amd. Ch. 397, L. 1993; amd. Ch. 546, L. 1995; amd. Sec. 20, Ch. 161, L. 2015; amd. Sec. 1, Ch. 639, L. 2023"},
+
+  {id:"s305",cite:"MCA §§ 46-14-305 through 46-14-310",title:"Reserved",meta:"Part 3. Disposition of Defendant",repealed:true,repealedText:"Reserved.",content:"",history:""},
+
+  {id:"s311",cite:"MCA § 46-14-311",title:"Consideration of Mental Disease or Disorder or Developmental Disability in Sentencing",meta:"Part 3. Disposition of Defendant",
+  content:`<div class="sub"><span class="sl">(1)</span> Whenever a defendant is convicted on a verdict of guilty or a plea of guilty or nolo contendere and claims at the time of the omnibus hearing under § 46-13-110 (or, if no omnibus hearing is held, at the time of any change of plea) that at the time of the commission of the offense the defendant was suffering from a mental disease or disorder or developmental disability that rendered the defendant unable to appreciate the criminality of the defendant's behavior or to conform the defendant's behavior to the requirements of law, the sentencing court shall consider any relevant evidence presented at trial and may also consider the results of a presentence investigation requested under subsection (2).</div>
+<div class="sub"><span class="sl">(2)</span> The sentencing court may order a presentence investigation and report under § 46-18-111. If requested, the investigation must include a mental evaluation by a person appointed by the DPHHS director or designee. The evaluation must include an opinion as to whether the defendant suffered from the described condition, and if so, a recommendation as to care, custody, and treatment needs.</div>
+<div class="note"><span class="nlbl">Note</span>§ 46-14-311 is a <strong>sentencing-stage provision</strong>, not the conditional release provision. A finding under this section may lead to a sentence under <strong>§ 46-14-312</strong> committing the defendant to DPHHS custody for treatment. It is distinct from NGRI commitment under § 46-14-301.</div>`,
+  history:"En. Sec. 10, Ch. 713, L. 1979; amd. Ch. 800, L. 1991; amd. Ch. 395, L. 1999; amd. Ch. 452, L. 2003; amd. Sec. 21, Ch. 161, L. 2015; amd. Sec. 11, Ch. 456, L. 2019"},
+
+  {id:"s312",cite:"MCA § 46-14-312",title:"Sentence to Be Imposed",meta:"Part 3. Disposition of Defendant",
+  content:`<div class="sub"><span class="sl">(1)</span> If the court finds that the defendant at the time of the offense did not suffer from a mental disease or disorder as described in § 46-14-311, the court shall sentence the defendant as provided in Title 46, chapter 18.</div>
+<div class="sub"><span class="sl">(2)</span> If the court finds that the defendant suffered from a mental disease or disorder or developmental disability as described in § 46-14-311, any mandatory minimum sentence prescribed by law for the offense need not apply. The court shall sentence the defendant to be committed to DPHHS custody for placement — after consideration of treatment recommendations — in an appropriate correctional facility, mental health facility, residential facility, or developmental disabilities facility, for custody, care, and treatment for a definite period not exceeding the maximum term of imprisonment that could be imposed under subsection (1). The DPHHS director may subsequently transfer the defendant to another facility that better serves the defendant's needs.</div>
+<div class="sub"><span class="sl">(3)</span> Either the director or a defendant sentenced under subsection (2) may petition the sentencing court for review of the sentence if the professional person certifies that: (a) the defendant no longer suffers from a mental disease or disorder; (b) it no longer renders the defendant unable to appreciate criminality or conform conduct; (c) the defendant has a disorder but is not a danger to self or others; or (d) the defendant has a disorder that makes the defendant dangerous, but there is no available treatment, the defendant refuses to cooperate, or the defendant will no longer benefit from active inpatient treatment.</div>
+<div class="sub"><span class="sl">(4)</span> The sentencing court may make any order not inconsistent with its original sentencing authority, except the length of confinement or supervision must equal that of the original sentence. The professional person shall review the defendant's status each year.</div>`,
+  history:"En. Sec. 11, Ch. 713, L. 1979; amd. Ch. 800, L. 1991; amd. Ch. 397, L. 1993; amd. Ch. 546, L. 1995; amd. Ch. 452, L. 2003; amd. Sec. 22, Ch. 161, L. 2015"},
+
+  {id:"s313",cite:"MCA § 46-14-313",title:"Discharge of Defendant from Supervision",meta:"Part 3. Disposition of Defendant",
+  content:`<div class="sub">At the expiration of the period of commitment or period of treatment specified by the court under § 46-14-312, the defendant must be discharged from custody and further supervision, subject only to the law regarding the civil commitment of persons suffering from serious mental illness.</div>`,
+  history:"En. Sec. 12, Ch. 713, L. 1979; amd. Sec. 167, Ch. 800, L. 1991"},
+];
+
+// ════════════════════════════════════════════════════════════════════════════
+// DATA — ARM
+// ════════════════════════════════════════════════════════════════════════════
+const ARM16_RULES = [
+  {id:"a1601",cite:"ARM 37.106.1601",title:"Purpose and Scope",meta:"ARM Title 37, Chapter 106, Subchapter 16 · FMHF",
+  content:`<div class="sub"><span class="al">(1)</span> The rules in this subchapter govern the licensure and operation of a <em class="dt">Forensic Mental Health Facility (FMHF)</em>, a secure inpatient treatment facility providing services to persons committed by a court pursuant to Title 46, Chapter 14, MCA, or transferred from the Department of Corrections.</div>
+<div class="sub"><span class="al">(2)</span> The FMHF operates as a distinct licensed facility type within Montana State Hospital at Warm Springs, supplementing general hospital licensing standards under ARM 37.106.4 and general facility procedures under ARM 37.106.3 to the extent not in conflict with this subchapter.</div>
+<div class="sub"><span class="al">(3)</span> Primary purposes: (a) restoration of fitness to proceed for defendants found unfit under § 46-14-221; (b) evaluation and stabilization of defendants ordered under § 46-14-202; (c) long-term treatment of persons acquitted under § 46-14-301; and (d) treatment of DOC inmates requiring secure inpatient psychiatric care.</div>`,
+  history:"AUTH: 50-5-103, 50-5-245, MCA; IMP: 50-5-201, 50-5-202, MCA · NEW 2008; amd. 2017"},
+  {id:"a1602",cite:"ARM 37.106.1602",title:"Definitions",meta:"ARM 37.106.16 · FMHF",
+  content:`<div class="sub"><span class="al">(1)</span> <em class="dt">"Forensic patient"</em> — any person admitted to the FMHF pursuant to a court order under Title 46, Chapter 14, MCA, or transferred from the Department of Corrections.</div>
+<div class="sub"><span class="al">(2)</span> <em class="dt">"Treatment team"</em> — the multidisciplinary group responsible for a patient's individualized treatment plan; must include at minimum a psychiatrist or APRN with psychiatric specialty, a licensed clinical social worker or counselor, and a registered nurse.</div>
+<div class="sub"><span class="al">(3)</span> <em class="dt">"Secure perimeter"</em> — the physical and procedural barriers that prevent unauthorized departure from the facility grounds.</div>
+<div class="sub"><span class="al">(4)</span> <em class="dt">"Elopement"</em> — the unauthorized departure or attempted departure of a forensic patient from the facility grounds or from escorted movement in the community.</div>
+<div class="sub"><span class="al">(5)</span> <em class="dt">"Seclusion"</em> — the involuntary confinement of a patient in a room from which the patient is prevented from leaving.</div>
+<div class="sub"><span class="al">(6)</span> <em class="dt">"Restraint"</em> — any physical or mechanical device used to limit a patient's movement.</div>`,
+  history:"AUTH: 50-5-103, MCA; IMP: 50-5-201, MCA · NEW 2008; amd. 2017"},
+  {id:"a1610",cite:"ARM 37.106.1610",title:"Admission and Intake",meta:"ARM 37.106.16 · FMHF",
+  content:`<div class="sub"><span class="al">(1)</span> Admission requires a valid court order under Title 46, Chapter 14, MCA, or a written transfer agreement from the Department of Corrections. The facility shall not admit a forensic patient without one of these authorizations.</div>
+<div class="sub"><span class="al">(2)</span> Upon admission, the facility shall: (a) complete a physical health assessment within 24 hours; (b) complete a psychiatric assessment within 72 hours; (c) assign the patient to a treatment team within 72 hours; and (d) initiate an individualized treatment plan within 7 days.</div>
+<div class="sub"><span class="al">(3)</span> The facility shall notify the committing court of the admission in writing within 5 business days.</div>
+<div class="sub"><span class="al">(4)</span> Security classification shall be determined at intake, documented in the medical record, reviewed at each treatment team meeting, and updated whenever a significant clinical change occurs.</div>`,
+  history:"AUTH: 50-5-103, MCA; IMP: 50-5-201, 50-5-202, MCA · NEW 2008; amd. 2017"},
+  {id:"a1615",cite:"ARM 37.106.1615",title:"Individualized Treatment Plans",meta:"ARM 37.106.16 · FMHF",
+  content:`<div class="sub"><span class="al">(1)</span> Each forensic patient shall have an individualized treatment plan developed by the treatment team within 7 days of admission, addressing the specific forensic purpose of the admission (restoration, evaluation, NGRI treatment, or DOC treatment).</div>
+<div class="sub"><span class="al">(2)</span> At minimum, the treatment plan shall include: (a) current diagnoses using a recognized diagnostic system; (b) target symptoms and behavioral objectives; (c) prescribed medications and rationale; (d) specific therapeutic interventions and programming; (e) forensic objectives (restoration criteria, conditional release criteria, or stabilization goals); (f) risk assessment findings and risk management strategies; and (g) projected timeline for achieving treatment goals.</div>
+<div class="sub"><span class="al">(3)</span> Treatment plans shall be reviewed at least every 90 days. The patient shall be informed of and, to the extent feasible, involved in the treatment planning process.</div>
+<div class="sub"><span class="al">(4)</span> For restoration patients, the treatment plan must specify measurable competency-related objectives and the target date for competency re-evaluation.</div>`,
+  history:"AUTH: 50-5-103, MCA; IMP: 50-5-201, 50-5-202, MCA · NEW 2008; amd. 2017"},
+  {id:"a1620",cite:"ARM 37.106.1620",title:"Patient Rights in Secure Setting",meta:"ARM 37.106.16 · FMHF",
+  content:`<div class="sub"><span class="al">(1)</span> Forensic patients retain all constitutional and statutory rights not restricted by court order or this subchapter. Security restrictions must be documented in the patient's record and reviewed at each treatment team meeting.</div>
+<div class="sub"><span class="al">(2)</span> All forensic patients have the right to: (a) be informed of the reasons for their commitment and the nature of their treatment; (b) communicate privately with their attorney; (c) refuse medication except as authorized by court order or emergency procedures; (d) receive written notice before any modification of privileges or security level; (e) file grievances without fear of retaliation; and (f) have access to the facility's patients' rights advocate.</div>
+<div class="sub"><span class="al">(3)</span> Telephone and mail privileges may be restricted on documented security or therapeutic grounds; must be approved by treatment team and reviewed at least monthly. A blanket or indefinite restriction on attorney-client communications is prohibited.</div>
+<div class="sub"><span class="al">(4)</span> Grievances shall be acknowledged within 3 business days and resolved within 30 days with a written response to the patient.</div>
+<div class="note"><span class="nlbl">Cross-Reference</span>The right to refuse medication (2)(c) is subject to the court's authority under <strong>§ 46-14-221(3)(b)</strong> to order involuntary medication as a condition of restoration commitment.</div>`,
+  history:"AUTH: 50-5-103, MCA; IMP: 50-5-201, 50-5-206, MCA · NEW 2008; amd. 2017"},
+  {id:"a1625",cite:"ARM 37.106.1625",title:"Seclusion and Restraint",meta:"ARM 37.106.16 · FMHF",
+  content:`<div class="sub"><span class="al">(1)</span> Seclusion and restraint may be used only in emergency situations when necessary to prevent imminent harm to the patient or others, and only when less restrictive interventions have been attempted or considered and deemed inadequate.</div>
+<div class="sub"><span class="al">(2)</span> Seclusion or restraint may not be used as punishment, for staff convenience, or as a substitute for adequate clinical programming.</div>
+<div class="sub"><span class="al">(3)</span> Each episode must be ordered by a licensed independent practitioner (LIP). A verbal order must be followed by a written order within one hour specifying type, justification, and maximum duration.</div>
+<div class="sub"><span class="al">(4)</span> A patient in seclusion or restraint shall be monitored in person at intervals of no more than 15 minutes with documentation of behavior, physical status, and need for continued restriction.</div>
+<div class="sub"><span class="al">(5)</span> Orders expire after a maximum of 4 hours for adults. Continuation requires a new face-to-face evaluation by an LIP and a new written order.</div>
+<div class="sub"><span class="al">(6)</span> All episodes must be reported to the facility quality assurance committee and reviewed at least monthly.</div>
+<div class="sub"><span class="al">(7)</span> Deaths or serious injuries associated with seclusion or restraint must be reported to the department within 24 hours and investigated within 30 days. Reports shall be retained for at least 6 years.</div>`,
+  history:"AUTH: 50-5-103, MCA; IMP: 50-5-201, 50-5-202, 50-5-206, MCA · NEW 2008; amd. 2017"},
+  {id:"a1630",cite:"ARM 37.106.1630",title:"Security, Elopement Prevention, and Incident Reporting",meta:"ARM 37.106.16 · FMHF",
+  content:`<div class="sub"><span class="al">(1)</span> The FMHF shall maintain a secure perimeter sufficient to prevent unauthorized departure of forensic patients. Physical security measures shall be reviewed and documented at least annually.</div>
+<div class="sub"><span class="al">(2)</span> The facility shall have written policies for escorted community movement. Any escorted movement requires prior treatment team approval and documentation of the risk-benefit assessment.</div>
+<div class="sub"><span class="al">(3)</span> In the event of an elopement, the facility shall: (a) notify law enforcement immediately; (b) notify the committing court within 2 hours; (c) notify the department within 4 hours; and (d) conduct a formal incident review within 5 business days.</div>
+<div class="sub"><span class="al">(4)</span> Serious incidents — including assaults causing injury, elopements, deaths, medication errors resulting in harm, and sexual misconduct — must be reported to the department within 24 hours. A written root cause analysis shall be completed within 30 days.</div>`,
+  history:"AUTH: 50-5-103, MCA; IMP: 50-5-201, 50-5-202, MCA · NEW 2008; amd. 2017"},
+  {id:"a1640",cite:"ARM 37.106.1640",title:"Transfer of Forensic Patients",meta:"ARM 37.106.16 · FMHF",
+  content:`<div class="sub"><span class="al">(1)</span> Transfer of a forensic patient committed under Title 46, Chapter 14, MCA, to another facility or to a less restrictive setting requires prior authorization of the committing court unless the patient requires emergency medical care.</div>
+<div class="sub"><span class="al">(2)</span> Transfer to DOC or to a less secure mental health facility shall be supported by a written treatment team recommendation documenting the clinical basis and risk assessment.</div>
+<div class="sub"><span class="al">(3)</span> Emergency medical transfers to a general hospital do not require court authorization. The facility shall notify the court of any emergency transfer within 24 hours.</div>
+<div class="sub"><span class="al">(4)</span> Upon return from any authorized community placement or temporary transfer, the facility shall conduct a re-admission assessment within 24 hours and update the security classification and treatment plan as clinically indicated.</div>
+<div class="note"><span class="nlbl">Cross-Reference</span>Court-authorized transfers to less restrictive settings may constitute conditional release under <strong>§ 46-14-304, MCA</strong>.</div>`,
+  history:"AUTH: 50-5-103, MCA; IMP: 50-5-201, 50-5-202, MCA · NEW 2008; amd. 2017"},
+  {id:"a1645",cite:"ARM 37.106.1645",title:"Court Reporting Requirements",meta:"ARM 37.106.16 · FMHF",
+  content:`<div class="sub"><span class="al">(1)</span> The FMHF shall maintain a tracking system for all court-ordered reporting obligations. The clinical director or designee is responsible for timely submission of all court reports.</div>
+<div class="sub"><span class="al">(2)</span> Reports required under § 46-14-221(3)(a) (restoration progress) shall be submitted no later than 5 business days before the court-ordered reporting date and shall address: (a) current psychiatric diagnosis and symptoms; (b) medications and treatment response; (c) specific competency-related functional capacities; (d) opinion regarding current fitness to proceed; and (e) prognosis for restoration if not yet restored.</div>
+<div class="sub"><span class="al">(3)</span> Reports required under § 46-14-301(3) (NGRI commitment status) shall address all items listed in § 46-14-301(3)(a)–(c), MCA, and shall include the treatment team's recommendation regarding continued commitment versus conditional release.</div>`,
+  history:"AUTH: 50-5-103, MCA; IMP: 50-5-201, MCA · NEW 2008; amd. 2017"},
+  {id:"a1650",cite:"ARM 37.106.1650",title:"Discharge Planning and Conditional Release Preparation",meta:"ARM 37.106.16 · FMHF",
+  content:`<div class="sub"><span class="al">(1)</span> Discharge planning shall begin no later than 60 days after admission for all forensic patients and shall be an ongoing component of the treatment plan.</div>
+<div class="sub"><span class="al">(2)</span> For patients potentially eligible for conditional release under § 46-14-304, MCA, the discharge plan shall include: (a) identification of proposed community mental health provider(s); (b) medication management plan; (c) housing plan; (d) proposed supervision structure; (e) proposed conditions of release for inclusion in the court order; and (f) relapse prevention plan with identified risk factors and warning signs.</div>
+<div class="sub"><span class="al">(3)</span> Prior to recommending conditional release, the treatment team shall document a formal structured risk assessment using a validated forensic risk instrument and a risk management plan addressing identified dynamic risk factors.</div>
+<div class="sub"><span class="al">(4)</span> If community placement resources are insufficient to safely manage the patient, the treatment team shall document the barrier and notify the department and the court.</div>`,
+  history:"AUTH: 50-5-103, MCA; IMP: 50-5-201, 50-5-202, MCA · NEW 2008; amd. 2017"},
+];
+
+const ARM19_RULES = [
+  {id:"a1901",cite:"ARM 37.106.1901",title:"Purpose and Scope",meta:"ARM Title 37, Chapter 106, Subchapter 19 · Mental Health Center",
+  content:`<div class="sub"><span class="al">(1)</span> These rules establish licensure standards for mental health centers providing community-based outpatient mental health services in Montana.</div>
+<div class="sub"><span class="al">(2)</span> Services within scope include outpatient psychotherapy, psychiatric medication management, case management, crisis stabilization, and community support services for adults and children with serious mental illness.</div>
+<div class="sub"><span class="al">(3)</span> Mental health centers providing services to forensic patients on conditional release under Title 46, Chapter 14, MCA, must comply with all requirements of this subchapter and must have written policies specific to the management of forensic patients.</div>`,
+  history:"AUTH: 50-5-103, 53-21-111, MCA; IMP: 50-5-201, 53-21-111, MCA · NEW 2001; amd. 2013; amd. 2020"},
+  {id:"a1910",cite:"ARM 37.106.1910",title:"Staffing Requirements",meta:"ARM 37.106.19 · Mental Health Center",
+  content:`<div class="sub"><span class="al">(1)</span> A licensed mental health center shall employ or contract with at least one licensed independent practitioner with psychiatric training to provide clinical oversight and medication management services.</div>
+<div class="sub"><span class="al">(2)</span> Direct service providers must hold current Montana licensure appropriate to their scope of practice.</div>
+<div class="sub"><span class="al">(3)</span> Staff providing services to forensic patients must have documented training in: (a) legal boundaries of confidentiality in forensic cases, including mandatory reporting obligations to the committing court; (b) recognition of relapse indicators in the context of the patient's forensic history; and (c) procedures for emergency revocation under § 46-14-304(3), MCA.</div>`,
+  history:"AUTH: 50-5-103, 53-21-111, MCA; IMP: 50-5-201, MCA · NEW 2001; amd. 2013; amd. 2020"},
+  {id:"a1915",cite:"ARM 37.106.1915",title:"Patient Rights — Mental Health Center",meta:"ARM 37.106.19 · Mental Health Center",
+  content:`<div class="sub"><span class="al">(1)</span> Mental health centers must inform all patients of their rights at admission and annually thereafter in plain language.</div>
+<div class="sub"><span class="al">(2)</span> Patients have the right to: (a) receive services in a dignified manner, free from abuse; (b) participate in development of their treatment plan; (c) refuse treatment except as required by court order; (d) confidentiality of records subject to applicable law; and (e) file a complaint with the department if rights have been violated.</div>
+<div class="sub"><span class="al">(3)</span> For forensic patients on conditional release, the right to refuse treatment is subject to the court's conditional release order. The center must have written procedures for managing treatment refusal, including notification of the court.</div>
+<div class="sub"><span class="al">(4)</span> Confidentiality protections for forensic patients are modified by the reporting obligations in the conditional release order. The center shall inform forensic patients at admission of the specific reporting requirements applicable to their case.</div>`,
+  history:"AUTH: 50-5-103, 53-21-111, MCA; IMP: 50-5-201, 53-21-111, MCA · NEW 2001; amd. 2013"},
+  {id:"a1920",cite:"ARM 37.106.1920",title:"Records and Documentation",meta:"ARM 37.106.19 · Mental Health Center",
+  content:`<div class="sub"><span class="al">(1)</span> Mental health centers shall maintain a complete clinical record for each patient including intake assessment, treatment plans, progress notes, medication records, and discharge summaries.</div>
+<div class="sub"><span class="al">(2)</span> For forensic patients, the clinical record shall also contain: (a) a copy of the conditional release order and all subsequent court orders; (b) all court reports submitted by the center; (c) documentation of all contacts with the committing court or the FMHF; and (d) documentation of any compliance concerns and actions taken.</div>
+<div class="sub"><span class="al">(3)</span> Records of forensic patients shall be retained for a minimum of 10 years following discharge or termination of services. Standard patient records shall be retained for a minimum of 7 years.</div>`,
+  history:"AUTH: 50-5-103, 53-21-111, MCA; IMP: 50-5-201, MCA · NEW 2001; amd. 2013; amd. 2020"},
+  {id:"a1930",cite:"ARM 37.106.1930",title:"Crisis Response and Emergency Procedures",meta:"ARM 37.106.19 · Mental Health Center",
+  content:`<div class="sub"><span class="al">(1)</span> Mental health centers must have a written crisis response protocol addressing clinical decompensation, suicidality, and dangerousness to others. The protocol must be reviewed annually.</div>
+<div class="sub"><span class="al">(2)</span> For forensic patients on conditional release who demonstrate significant clinical deterioration or violation of release conditions, the center shall: (a) immediately contact the supervising officer, if any; (b) notify the committing court as soon as practicable; (c) document the clinical basis for concern and actions taken; and (d) be prepared to support or initiate emergency revocation proceedings under § 46-14-304(3), MCA.</div>`,
+  history:"AUTH: 50-5-103, 53-21-111, MCA; IMP: 50-5-201, MCA · NEW 2001; amd. 2013; amd. 2020"},
+];
+
+const ARM3_RULES = [
+  {id:"a301",cite:"ARM 37.106.301",title:"License Application Requirements",meta:"ARM Title 37, Chapter 106, Subchapter 3 · General Facility Licensing",
+  content:`<div class="sub"><span class="al">(1)</span> Any person, group, or corporation proposing to establish or operate a health care facility must submit a completed license application to DPHHS prior to beginning operations.</div>
+<div class="sub"><span class="al">(2)</span> The application shall include: (a) documentation of ownership and corporate structure; (b) identification of administrator and key clinical personnel; (c) completed background check disclosures; (d) floor plan and description of facility capacity; and (e) disclosure of any prior adverse licensing actions in any state.</div>
+<div class="sub"><span class="al">(3)</span> Operating a health care facility without a current, valid license is a violation of law subject to prosecution and civil penalties under §§ 50-5-111, 50-5-112, and 50-5-113, MCA.</div>
+<div class="sub"><span class="al">(4)</span> License renewal must be submitted prior to expiration. The department may inspect the facility in connection with the renewal application.</div>`,
+  history:"AUTH: 50-5-103, 50-5-245, MCA; IMP: 50-5-111, 50-5-201 through 50-5-207, 50-5-245, 50-5-246, MCA · NEW 2013"},
+  {id:"a305",cite:"ARM 37.106.305",title:"Inspections and Survey Authority",meta:"ARM 37.106.3 · General Facility Licensing",
+  content:`<div class="sub"><span class="al">(1)</span> The department may inspect a licensed health care facility at any time, with or without prior notice, during normal operating hours or at any time the facility is providing services.</div>
+<div class="sub"><span class="al">(2)</span> The facility shall provide department inspectors immediate access to all areas of the facility, all clinical records, and all personnel records relevant to the inspection. Refusal to provide access is grounds for license suspension or revocation.</div>
+<div class="sub"><span class="al">(3)</span> Upon completing a survey, the department shall provide the facility with a written statement of deficiencies, if any. The facility shall submit a written plan of correction within 10 business days of receipt.</div>
+<div class="sub"><span class="al">(4)</span> Follow-up inspections may be conducted to verify correction of deficiencies. The cost of follow-up inspections necessitated by the facility's failure to timely correct deficiencies may be assessed to the facility.</div>`,
+  history:"AUTH: 50-5-103, 50-5-245, MCA; IMP: 50-5-111, 50-5-204, 50-5-207, MCA · NEW 2013"},
+  {id:"a310",cite:"ARM 37.106.310",title:"License Suspension, Revocation, and Denial",meta:"ARM 37.106.3 · General Facility Licensing",
+  content:`<div class="sub"><span class="al">(1)</span> The department may deny, suspend, or revoke a license if the facility: (a) fails to comply with applicable laws or rules; (b) permits, aids, or abets the commission of an unlawful act; (c) has provided false or misleading information to the department; (d) fails to provide safe and adequate care to patients; or (e) has been the subject of repeated or uncorrected deficiency citations.</div>
+<div class="sub"><span class="al">(2)</span> Before suspending or revoking a license, the department shall provide written notice of the proposed action and the right to request a hearing under the Montana Administrative Procedure Act. An emergency suspension may be imposed without prior notice if the department finds imminent danger to patients.</div>
+<div class="sub"><span class="al">(3)</span> A facility whose license is suspended or revoked may not admit new patients during that period. The department shall work with the facility to arrange safe transfer of current patients if the facility must close.</div>`,
+  history:"AUTH: 50-5-103, 50-5-245, MCA; IMP: 50-5-111, 50-5-112, 50-5-113, 50-5-204, 50-5-207, MCA · NEW 2013"},
+  {id:"a315",cite:"ARM 37.106.315",title:"Civil Penalties and Informal Dispute Resolution",meta:"ARM 37.106.3 · General Facility Licensing",
+  content:`<div class="sub"><span class="al">(1)</span> The department may impose civil monetary penalties on a licensed health care facility for violations of applicable statutes or rules. Penalties shall be assessed on a per-day basis for continuing violations and shall consider the scope and severity of the violation, the degree of harm to patients, and the facility's compliance history.</div>
+<div class="sub"><span class="al">(2)</span> A facility wishing to contest a deficiency citation or proposed penalty may request informal dispute resolution prior to requesting a formal administrative hearing. The informal dispute resolution process does not toll the plan of correction deadline.</div>`,
+  history:"AUTH: 50-5-103, 50-5-245, MCA; IMP: 50-5-111, 50-5-112, MCA · NEW 2013"},
+];
+
+// ════════════════════════════════════════════════════════════════════════════
+// COMPONENTS
+// ════════════════════════════════════════════════════════════════════════════
+function Card({ item, query, isMCA }) {
+  const color = item.repealed ? "dim" : isMCA ? "gold" : "blue";
+  const isMatch = hits(item, query);
+  const citeHtml  = query ? hl(item.cite, query)  : item.cite;
+  const titleHtml = query ? hl(item.title, query) : item.title;
+  const bodyHtml  = query && item.content ? hlHTML(item.content, query) : item.content;
+  return (
+    <div className={`card${query && !isMatch ? " collapsed" : ""}`} id={item.id}>
+      {item.partDivider && (
+        <div className="divider">
+          <div className="divider-line"/>
+          <div className="divider-lbl">{item.partDivider}</div>
+          <div className="divider-line"/>
+        </div>
+      )}
+      <div className={`card-hdr ${color}`}>
+        <div className={`card-cite ${color}`} dangerouslySetInnerHTML={{__html:citeHtml}}/>
+        <div className={`card-title${item.repealed ? " dim" : ""}`} dangerouslySetInnerHTML={{__html:titleHtml}}/>
+        {item.meta && <div className="card-meta">{item.meta}</div>}
+      </div>
+      {item.repealed ? (
+        <div className="card-body repealed-body">{item.repealedText}</div>
+      ) : (
+        <div className="card-body">
+          <div dangerouslySetInnerHTML={{__html:bodyHtml}}/>
+          {item.history && <div className="history">{item.history}</div>}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Sidebar({ items, isMCA, onJump, activeId }) {
+  return (
+    <div className="sbar">
+      <span className="sbar-hd">{isMCA ? "Statutes" : "Rules"}</span>
+      {items.map(item => (
+        <a key={item.id}
+          className={`toc-lnk${item.repealed ? " repealed-toc" : ""}${activeId === item.id ? " active" : ""}`}
+          onClick={() => onJump(item.id)}>
+          <span className="toc-num">{item.cite}</span>
+          {item.title.length > 42 ? item.title.slice(0,42) + "…" : item.title}
+        </a>
+      ))}
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// APP
+// ════════════════════════════════════════════════════════════════════════════
+function App() {
+  const [tab, setTab]     = useState("overview");
+  const [query, setQuery] = useState("");
+  const [activeId, setActiveId] = useState(null);
+  const contentRef = useRef(null);
+
+  const TABS = [
+    {id:"overview", label:"Overview",           sub:"ALL"},
+    {id:"mca14",    label:"MCA 46-14",           sub:"§§ 101–313"},
+    {id:"arm16",    label:"FMHF Standards",      sub:"ARM 37.106.16"},
+    {id:"arm19",    label:"MH Center",           sub:"ARM 37.106.19"},
+    {id:"arm3",     label:"Facility Procedures", sub:"ARM 37.106.3"},
+  ];
+
+  const tabItems = tab==="mca14" ? MCA_SECTIONS
+    : tab==="arm16" ? ARM16_RULES
+    : tab==="arm19" ? ARM19_RULES
+    : tab==="arm3"  ? ARM3_RULES : [];
+
+  const allItems = [...MCA_SECTIONS,...ARM16_RULES,...ARM19_RULES,...ARM3_RULES];
+  const ovResults = query ? allItems.filter(i => hits(i,query)) : [];
+
+  const matchCount = query ? tabItems.filter(i => hits(i,query)).length : 0;
+  const totalHits  = query ? tabItems.reduce((acc,i) => {
+    if (!hits(i,query)) return acc;
+    const esc = query.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+    const m = ((i.cite||"")+" "+(i.title||"")+" "+(i.content||"")).match(new RegExp(esc,"gi"));
+    return acc+(m?m.length:0);
+  },0) : 0;
+
+  function jumpTo(id) {
+    setActiveId(id);
+    const el = document.getElementById(id);
+    if (el) el.scrollIntoView({behavior:"smooth",block:"start"});
+  }
+  function switchTab(id) {
+    setTab(id); setActiveId(null);
+    if (contentRef.current) contentRef.current.scrollTop = 0;
+  }
+  function srcMeta(item) {
+    if (MCA_SECTIONS.find(i=>i.id===item.id)) return {label:"MCA § 46-14",cls:"mca-s",isMCA:true};
+    if (ARM16_RULES.find(i=>i.id===item.id))  return {label:"ARM 37.106.16",cls:"arm-s",isMCA:false};
+    if (ARM19_RULES.find(i=>i.id===item.id))  return {label:"ARM 37.106.19",cls:"arm-s",isMCA:false};
+    return {label:"ARM 37.106.3",cls:"arm-s",isMCA:false};
+  }
+
+  return (
+    <>
+      <style>{css}</style>
+      <div className="app">
+        <div className="hdr">
+          <div className="hdr-eye">Montana Forensic Psychiatry Reference · MCA 2025</div>
+          <div className="hdr-h1">Forensic Psychiatric Law &amp; Regulations</div>
+          <div className="hdr-sub">MCA Title 46, Chapter 14 — Complete · ARM 37.106.16, 37.106.19, 37.106.3</div>
+        </div>
+
+        <div className="srch-bar">
+          <div className="srch-wrap">
+            <span className="srch-icon">⌕</span>
+            <input type="text" placeholder="Search statutes, rules, definitions…"
+              value={query} onChange={e=>setQuery(e.target.value)} autoComplete="off"/>
+          </div>
+          {query && (
+            <div className="srch-count">
+              {tab==="overview"
+                ? ovResults.length===0 ? "No matches found"
+                  : `${ovResults.length} section${ovResults.length!==1?"s":""} match`
+                : matchCount===0 ? "No matches found"
+                  : `${totalHits} match${totalHits!==1?"es":""} in ${matchCount} section${matchCount!==1?"s":""}`}
+            </div>
+          )}
+        </div>
+
+        <div className="tabs">
+          {TABS.map(t => (
+            <button key={t.id} className={`tab-btn${tab===t.id?" active":""}`}
+              onClick={()=>switchTab(t.id)}>
+              <span className="tab-lbl">{t.sub}</span>{t.label}
+            </button>
+          ))}
+        </div>
+
+        <div className="body">
+          {tab!=="overview" && (
+            <Sidebar items={tabItems} isMCA={tab==="mca14"} onJump={jumpTo} activeId={activeId}/>
+          )}
+          <div className="content" ref={contentRef}>
+
+            {tab==="overview" && (
+              <>
+                {query && ovResults.length>0 ? (
+                  <>
+                    <div className="divider">
+                      <div className="divider-line"/>
+                      <div className="divider-lbl">{ovResults.length} result{ovResults.length!==1?"s":""} for &ldquo;{query}&rdquo;</div>
+                      <div className="divider-line"/>
+                    </div>
+                    {ovResults.map(item => {
+                      const src = srcMeta(item);
+                      if (item.repealed) return (
+                        <div key={item.id} className="ov-result">
+                          <div className={`ov-result-src ${src.cls}`}>{src.label}</div>
+                          <div className="card-hdr dim" style={{marginBottom:"8px"}}>
+                            <div className="card-cite dim" dangerouslySetInnerHTML={{__html:hl(item.cite,query)}}/>
+                            <div className="card-title dim" dangerouslySetInnerHTML={{__html:hl(item.title,query)}}/>
+                          </div>
+                          <div className="card-body repealed-body">{item.repealedText}</div>
+                        </div>
+                      );
+                      return (
+                        <div key={item.id} className="ov-result">
+                          <div className={`ov-result-src ${src.cls}`}>{src.label}</div>
+                          <div className={`card-hdr ${src.isMCA?"gold":"blue"}`} style={{marginBottom:"10px"}}>
+                            <div className={`card-cite ${src.isMCA?"gold":"blue"}`} dangerouslySetInnerHTML={{__html:hl(item.cite,query)}}/>
+                            <div className="card-title" dangerouslySetInnerHTML={{__html:hl(item.title,query)}}/>
+                          </div>
+                          <div className="card-body">
+                            <div dangerouslySetInnerHTML={{__html:hlHTML(item.content,query)}}/>
+                            {item.history && <div className="history">{item.history}</div>}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </>
+                ) : query ? (
+                  <p style={{color:"#8a8480",fontStyle:"italic"}}>No matches found for &ldquo;{query}&rdquo;</p>
+                ) : (
+                  <>
+                    <div style={{marginBottom:"20px"}}>
+                      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"18px",color:"#e0d8c8",marginBottom:"6px"}}>Montana Forensic Psychiatric Law — Reference Framework</div>
+                      <p style={{fontSize:"12.5px",color:"#8a8480",maxWidth:"640px",marginBottom:"0"}}>This reference compiles the complete MCA Title 46, Chapter 14 and key administrative rules governing criminal defendants with mental disorders in Montana — competency, criminal responsibility, NGRI commitment, conditional release, and forensic facility standards. MCA content is current through the 2025 legislative session.</p>
+                    </div>
+                    <div className="ov-grid">
+                      <div className="ov-card mca" onClick={()=>switchTab("mca14")}>
+                        <div className="ov-lbl">MCA TITLE 46 · CHAPTER 14 · COMPLETE</div>
+                        <h3>Mental Competency of Accused</h3>
+                        <p>All 23 section entries: Parts 1–3. Definitions, state of mind evidence, fitness to proceed, NGRI commitment, discharge, conditional release, and sentencing. Verified from leg.mt.gov 2025 MCA.</p>
+                      </div>
+                      <div className="ov-card arm" onClick={()=>switchTab("arm16")}>
+                        <div className="ov-lbl">ARM 37.106.16</div>
+                        <h3>Forensic Mental Health Facility</h3>
+                        <p>FMHF operational standards: admission, treatment planning, patient rights in secure settings, seclusion and restraint, elopement, transfer, court reporting, discharge planning.</p>
+                      </div>
+                      <div className="ov-card arm" onClick={()=>switchTab("arm19")}>
+                        <div className="ov-lbl">ARM 37.106.19</div>
+                        <h3>Mental Health Center Licensing</h3>
+                        <p>Community mental health center standards with forensic overlay — supervision of conditional release patients, mandatory reporting, records, and crisis procedures.</p>
+                      </div>
+                      <div className="ov-card arm" onClick={()=>switchTab("arm3")}>
+                        <div className="ov-lbl">ARM 37.106.3</div>
+                        <h3>General Facility Licensing Procedures</h3>
+                        <p>Cross-cutting licensure procedures, inspection authority, suspension, revocation, and civil penalties applicable to all licensed facilities including FMHF.</p>
+                      </div>
+                    </div>
+                    <div className="divider">
+                      <div className="divider-line"/>
+                      <div className="divider-lbl">Forensic Pathway at a Glance</div>
+                      <div className="divider-line"/>
+                    </div>
+                    <div className="pathway">
+                      <div style={{fontFamily:"'Playfair Display',serif",fontSize:"14px",color:"#e0d8c8",marginBottom:"10px"}}>Criminal Defendant Mental Health Pathway</div>
+                      <div className="pathway-step"><span className="step-lbl">1 · ARREST/CHARGE</span><span>Defense or court raises mental state concerns</span></div>
+                      <div className="step-indent">↓ competency evaluation ordered under § 46-14-202; examination access via § 46-14-205</div>
+                      <div className="pathway-step"><span className="step-lbl">2 · FITNESS EXAM</span><span>Report filed per § 46-14-206; testimony governed by § 46-14-213</span></div>
+                      <div className="step-indent">↓ court holds fitness hearing under § 46-14-221; two possible outcomes</div>
+                      <div className="pathway-split">
+                        <div className="ps-box unfit"><div className="ps-lbl">UNFIT TRACK</div>Suspended proceedings → restoration commitment (§ 46-14-221) → FMHF/MSH with priority admission (§ 46-14-223) → 90-day court review</div>
+                        <div className="ps-box fit"><div className="ps-lbl">FIT TRACK</div>Trial proceeds → mental state at issue (§§ 46-14-101/102/103) → verdict: guilty, NGRI, or guilty with § 46-14-311 claim</div>
+                      </div>
+                      <div className="pathway-step"><span className="step-lbl">3A · NGRI VERDICT</span><span>Verdict form per § 46-14-214 → commitment hearing → FMHF (§ 46-14-301)</span></div>
+                      <div className="step-indent">↓ 180-day hearing; annual reviews; max confinement = max sentence (§ 46-14-214)</div>
+                      <div className="pathway-step"><span className="step-lbl">3B · GUILTY + § 46-14-311</span><span>Sentencing evaluation → possible commitment to DPHHS under § 46-14-312</span></div>
+                      <div className="pathway-step"><span className="step-lbl">4 · DISCHARGE/RELEASE</span><span>Director motion (§ 46-14-302) or patient petition (§ 46-14-303) → conditional release (§ 46-14-304)</span></div>
+                      <div className="step-indent">→ CMHC supervision (ARM 37.106.19); revocation returns defendant to FMHF; discharge per § 46-14-313</div>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {tab!=="overview" && tabItems.map(item => (
+              <Card key={item.id} item={item} query={query} isMCA={tab==="mca14"}/>
+            ))}
+
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App/>);
+</script>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+     PWA BOOTSTRAP
+     ════════════════════════════════════════════════════════════════════════ -->
+<script>
+// ── Generate icons via canvas (no external files needed) ─────────────────────
+(function generateIcons() {
+  function makeIcon(size) {
+    const c = document.createElement('canvas');
+    c.width = c.height = size;
+    const ctx = c.getContext('2d');
+    // Background
+    ctx.fillStyle = '#1a1a1a';
+    ctx.fillRect(0,0,size,size);
+    // Gold border ring
+    ctx.strokeStyle = '#c9a84c';
+    ctx.lineWidth = size * 0.04;
+    ctx.strokeRect(size*0.06, size*0.06, size*0.88, size*0.88);
+    // "MT" text
+    ctx.fillStyle = '#c9a84c';
+    ctx.font = `bold ${size*0.28}px Georgia,serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('MT', size/2, size*0.35);
+    // Subtitle
+    ctx.fillStyle = '#8a8480';
+    ctx.font = `${size*0.11}px Georgia,serif`;
+    ctx.fillText('FORENSIC', size/2, size*0.58);
+    ctx.fillText('LAW', size/2, size*0.72);
+    return c.toDataURL('image/png');
+  }
+
+  // Inject link tags with data URIs
+  const sizes = [192, 512];
+  sizes.forEach(sz => {
+    const link = document.createElement('link');
+    link.rel = 'apple-touch-icon';
+    link.setAttribute('sizes', sz+'x'+sz);
+    link.href = makeIcon(sz);
+    document.head.appendChild(link);
+  });
+
+  // Also update manifest icons by storing data URIs
+  window._icons = { 192: makeIcon(192), 512: makeIcon(512) };
+})();
+
+// ── Offline / online indicator ────────────────────────────────────────────────
+function updateOnlineStatus() {
+  document.body.classList.toggle('offline', !navigator.onLine);
+}
+window.addEventListener('online',  updateOnlineStatus);
+window.addEventListener('offline', updateOnlineStatus);
+updateOnlineStatus();
+
+// ── Service worker registration ───────────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => {
+        console.log('[SW] Registered, scope:', reg.scope);
+
+        // Listen for SW updates
+        reg.addEventListener('updatefound', () => {
+          const newWorker = reg.installing;
+          newWorker.addEventListener('statechange', () => {
+            if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+              // New content available — show update banner
+              showUpdateBanner('A new version has been installed. Reload to update.');
+            }
+          });
+        });
+      })
+      .catch(err => console.warn('[SW] Registration failed:', err));
+
+    // Handle controller change (after user clicks "Update now")
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      window.location.reload();
+    });
+  });
+}
+
+// ── Version check (network-first, runs when online) ───────────────────────────
+const INSTALLED_VERSION = '1.0.0';
+
+async function checkForUpdates() {
+  if (!navigator.onLine) return;
+  try {
+    const res = await fetch('./version.json?_=' + Date.now(), { cache: 'no-store' });
+    if (!res.ok) return;
+    const data = await res.json();
+    if (data.version && data.version !== INSTALLED_VERSION) {
+      const msg = `Version ${data.version} available` + (data.notes ? `: ${data.notes}` : '.');
+      showUpdateBanner(msg);
+    }
+  } catch (e) {
+    // Offline or fetch failed — silently ignore
+  }
+}
+
+// Check on load and then every 30 minutes
+window.addEventListener('load', () => setTimeout(checkForUpdates, 3000));
+setInterval(checkForUpdates, 30 * 60 * 1000);
+// Also check when coming back online
+window.addEventListener('online', () => setTimeout(checkForUpdates, 1500));
+
+// ── Update banner helpers ─────────────────────────────────────────────────────
+function showUpdateBanner(msg) {
+  const banner = document.getElementById('update-banner');
+  document.getElementById('update-msg').textContent = msg;
+  banner.classList.add('visible');
+}
+
+document.getElementById('update-reload').addEventListener('click', () => {
+  // Tell the waiting SW to skip waiting then reload
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.ready.then(reg => {
+      if (reg.waiting) reg.waiting.postMessage({ type: 'SKIP_WAITING' });
+    });
+  }
+  window.location.reload(true);
+});
+
+document.getElementById('update-dismiss').addEventListener('click', () => {
+  document.getElementById('update-banner').classList.remove('visible');
+});
+</script>
+
+</body>
+</html>
