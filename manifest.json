@@ -1,11 +1,11 @@
 {
   "name": "MT Forensic Psychiatric Law",
-  "short_name": "MT Forensic Law",
-  "description": "Montana MCA Title 46 Chapter 14 and ARM 37.106 forensic psychiatric reference",
+  "short_name": "FMHF Regs",
+  "description": "Montana MCA Title 46 Chapter 14 and ARM 37.106 forensic psychiatric law reference",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#1a1a1a",
-  "theme_color": "#111111",
+  "background_color": "#0e1a2b",
+  "theme_color": "#0e1a2b",
   "orientation": "any",
   "scope": "./",
   "icons": [
