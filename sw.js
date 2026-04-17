@@ -3,7 +3,7 @@
 // To update the app: bump APP_VERSION here AND in version.json
 // The old cache is deleted automatically on activation.
 
-const APP_VERSION = '1.0.0';
+const APP_VERSION = '1.3';
 const CACHE_NAME  = 'mt-forensic-law-v' + APP_VERSION;
 
 const PRECACHE = [
@@ -57,6 +57,20 @@ self.addEventListener('fetch', event => {
   const isSameOrigin = url.origin === self.location.origin;
 
   if (!isSameOrigin && !isGoogleFont) return;
+
+  // index.html and root: network-first so content updates reach the user automatically
+  if (url.pathname.endsWith('index.html') || url.pathname.endsWith('/')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          const clone = response.clone();
+          caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
 
   // version.json: network-first so update banner works when online
   if (url.pathname.endsWith('version.json')) {
